@@ -8,23 +8,16 @@ import lyricsgenius
 
 def scrape_from_static():
     d = {}
-    end_artists = []  # To store artist names
-    end_songs = []    # To store song titles
+    end_artists = []  
+    end_songs = []    
 
-    # Open the static HTML file that was saved earlier
     with open('static_page.html', 'r', encoding='utf-8') as file:
         static_html = file.read()
 
-    # Parse the static HTML content using BeautifulSoup
     soup = BeautifulSoup(static_html, 'html.parser')
 
-    # Find the titles in the saved static HTML (adjust this part based on the actual content structure)
     found_titles = soup.find_all("article", class_="pmc-fallback-list-item")
 
-    # Print the number of titles found for debugging
-    print("Number of titles found:", len(found_titles))
-
-    # If titles are found, extract and print them
     if found_titles:
         for x in found_titles:
             h2tag = x.find("h2")
@@ -73,24 +66,32 @@ def combine_and_order():
     artists_combined = artists_50_1 + artists_100_51
     songs_combined = songs_50_1 + songs_100_51
 
-    print("Songs ranked 1 to 100:")
-    for i in range(len(artists_combined)):
-        print(f"Rank {i+1}: {artists_combined[i]} - {songs_combined[i]}")
+    # print("Songs ranked 1 to 100:")
+    # for i in range(len(artists_combined)):
+    #     print(f"Rank {i+1}: {artists_combined[i]} - {songs_combined[i]}")
 
-combine_and_order()
+    return artists_combined, songs_combined
 
-
-def lyrics(): 
-    songs = {}
+def lyrics(songs, artists): 
+    d = {}
+    for x in range(len(artists)):
+        d[artists[x]] = songs[x]
+    
     token = "-SPqPS1Wq_0zYs_L-31AVu0N_7Bx2-UcEmFQZAYs0CQ5zEeQKq083QV-VK0zLNHt"
     genius = lyricsgenius.Genius(token)
 
-    for artist, song in d.items():  # Iterate through the dictionary items
-        song_info = genius.search_song(artist, song)  # Pass song and artist to search_song
+    for artist, song in d.items():  
+        song_info = genius.search_song(artist, song)  
 
         if song_info:
-            print(f"Lyrics for {song} by {artist}:\n")
+            print(f"Lyrics for {artist} by {song}:\n")
             print(song_info.lyrics)
         else:
             print(f"Song '{song}' by {artist} not found.")
             print()
+
+artists_combined, songs_combined = combine_and_order()
+lyrics(songs_combined, artists_combined)
+
+
+   
