@@ -1,4 +1,4 @@
-# Gabriel Oliveira, Thomas Lezcano
+# Gabriel Oliveira, Thomas Lezcano, Renard Richmond
 # Final Project 
 
 import requests
@@ -73,21 +73,16 @@ def combine_and_order():
     return artists_combined, songs_combined
 
 def lyrics(songs, artists): 
-    d = {}
-    for x in range(len(artists)):
-        d[artists[x]] = songs[x]
-    
     token = "-SPqPS1Wq_0zYs_L-31AVu0N_7Bx2-UcEmFQZAYs0CQ5zEeQKq083QV-VK0zLNHt"
     genius = lyricsgenius.Genius(token)
 
-    for artist, song in d.items():  
-        song_info = genius.search_song(artist, song)  
-
+    for x in range(len(songs)):
+        song_info = genius.search_song(songs[x], artists[x])
         if song_info:
-            print(f"Lyrics for {artist} by {song}:\n")
+            print(f"Lyrics for {songs[x]} by {artists[x]}:\n")
             print(song_info.lyrics)
         else:
-            print(f"Song '{song}' by {artist} not found.")
+            print(f"Song '{songs[x]}' by {artists[x]} not found.")
             print()
 
 artists_combined, songs_combined = combine_and_order()
