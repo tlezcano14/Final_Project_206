@@ -2,9 +2,33 @@
 # Final Project 
 
 import requests
+import sqlite3
 import json
+import os
 from bs4 import BeautifulSoup
 import lyricsgenius
+
+
+def set_up_database(db_name):
+
+    path = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(path, db_name)
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    return cur, conn
+
+def first_table():
+    cur, conn = set_up_database("songs.db")
+    cur.execute('''CREATE TABLE IF NOT EXISTS songs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        title TEXT, 
+        artist TEXT)
+    ''')
+
+    conn.commit()
+    conn.close()
+
+first_table()
 
 def scrape_from_static():
     d = {}
@@ -59,16 +83,34 @@ def scrape_from_live_url():
     
     return artists, songs
 
-def combine_and_order():
+def combine_and_order(cur):
     artists_50_1, songs_50_1 = scrape_from_live_url()
     artists_100_51, songs_100_51 = scrape_from_static()
 
     artists_combined = artists_50_1 + artists_100_51
     songs_combined = songs_50_1 + songs_100_51
 
-    # print("Songs ranked 1 to 100:")
-    # for i in range(len(artists_combined)):
-    #     print(f"Rank {i+1}: {artists_combined[i]} - {songs_combined[i]}")
+    batch_size = 25
+    num_batches = 4  
+
+    for batch in range(num_batches):
+        start_index = batch * batch_size
+        end_index = start_index + batch_size
+
+        artists_batch = artists_combined[start_index:end_index]
+        songs_batch = songs_combined[start_index:end_index]
+
+        for i in range(len(artists_batch)):
+            title = songs_batch[i]
+            artist = artists_batch[i]
+            id = start_index + i + 1  
+
+            cur.execute('''
+                INSERT OR IGNORE INTO songs (id, title, artist)
+                VALUES (?, ?, ?)
+            ''', (id, title, artist))
+
+        cur.connection.commit()
 
     return artists_combined, songs_combined
 
@@ -85,8 +127,7 @@ def lyrics(songs, artists):
             print(f"Song '{songs[x]}' by {artists[x]} not found.")
             print()
 
-artists_combined, songs_combined = combine_and_order()
+cur, conn = set_up_database("songs.db")
+artists_combined, songs_combined = combine_and_order(cur)
 lyrics(songs_combined, artists_combined)
 
-
-   
