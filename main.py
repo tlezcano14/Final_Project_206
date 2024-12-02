@@ -35,7 +35,7 @@ def scrape_from_static():
     end_artists = []  
     end_songs = []    
 
-    with open('static_page.html', 'r', encoding='utf-8') as file:
+    with open('RS100.html', 'r', encoding='utf-8') as file:
         static_html = file.read()
 
     soup = BeautifulSoup(static_html, 'html.parser')
@@ -54,7 +54,7 @@ def scrape_from_static():
     
     end_artists.reverse()
     end_songs.reverse()
-
+# hay bitches
     return end_artists, end_songs
 
 def scrape_from_live_url():
