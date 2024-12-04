@@ -8,7 +8,6 @@ import os
 from bs4 import BeautifulSoup
 import lyricsgenius
 
-
 def set_up_database(db_name):
 
     path = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +28,20 @@ def first_table():
     conn.close()
 
 first_table()
+
+def second_table():
+    cur, conn = set_up_database("songs.db")
+    cur.execute('''CREATE TABLE IF NOT EXISTS lyrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        title TEXT, 
+        artist TEXT,
+        word count INTEGER)
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+second_table()
 
 def scrape_from_static():
     d = {}
@@ -54,7 +67,7 @@ def scrape_from_static():
     
     end_artists.reverse()
     end_songs.reverse()
-# hay bitches
+
     return end_artists, end_songs
 
 def scrape_from_live_url():
@@ -89,7 +102,7 @@ def combine_and_order(cur):
 
     artists_combined = artists_50_1 + artists_100_51
     songs_combined = songs_50_1 + songs_100_51
-
+#hellooo
     batch_size = 25
     num_batches = 4  
 
@@ -105,12 +118,12 @@ def combine_and_order(cur):
             artist = artists_batch[i]
             id = start_index + i + 1  
 
-            cur.execute('''
-                INSERT OR IGNORE INTO songs (id, title, artist)
-                VALUES (?, ?, ?)
-            ''', (id, title, artist))
+            # cur.execute('''
+            #     INSERT OR IGNORE INTO songs (id, title, artist)
+            #     VALUES (?, ?, ?)
+            # ''', (id, title, artist))
 
-        cur.connection.commit()
+        # cur.connection.commit()
 
     return artists_combined, songs_combined
 
@@ -121,13 +134,26 @@ def lyrics(songs, artists):
     for x in range(len(songs)):
         song_info = genius.search_song(songs[x], artists[x])
         if song_info:
-            print(f"Lyrics for {songs[x]} by {artists[x]}:\n")
-            print(song_info.lyrics)
-        else:
-            print(f"Song '{songs[x]}' by {artists[x]} not found.")
-            print()
+            text = song_info.lyrics
+            word_count = len(text.split())
+            cur.execute('''
+                SELECT id FROM songs WHERE title = ? AND artist = ?
+            ''', (songs[x], artists[x]))
+            song_id = cur.fetchone()  # Get the song ID for the given title and artist
+
+            if song_id:
+                song_id = song_id[0]  # Extract the actual song ID from the tuple
+
+                # Now insert data into the lyrics table
+                cur.execute('''
+                    INSERT OR IGNORE INTO lyrics (id, title, artist, word)
+                    VALUES (?, ?, ?, ?)
+                ''', (song_id, songs[x], artists[x], word_count))
+
+                conn.commit()
+
+    conn.close()
 
 cur, conn = set_up_database("songs.db")
 artists_combined, songs_combined = combine_and_order(cur)
 lyrics(songs_combined, artists_combined)
-
