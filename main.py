@@ -100,27 +100,13 @@ def combine_and_order(cur):
     artists_combined = artists_50_1 + artists_100_51
     songs_combined = songs_50_1 + songs_100_51
 
-    batch_size = 25
-    num_batches = 4  
+    for i, (artist, song) in enumerate(zip(artists_combined, songs_combined), 1):
+        cur.execute('''
+            INSERT OR IGNORE INTO songs (id, title, artist)
+            VALUES (?, ?, ?)
+        ''', (i, song, artist))
 
-    for batch in range(num_batches):
-        start_index = batch * batch_size
-        end_index = start_index + batch_size
-
-        artists_batch = artists_combined[start_index:end_index]
-        songs_batch = songs_combined[start_index:end_index]
-
-        for i in range(len(artists_batch)):
-            title = songs_batch[i]
-            artist = artists_batch[i]
-            id = start_index + i + 1  
-
-            cur.execute('''
-                INSERT OR IGNORE INTO songs (id, title, artist)
-                VALUES (?, ?, ?)
-            ''', (id, title, artist))
-
-        cur.connection.commit()
+    cur.connection.commit()
 
     return artists_combined, songs_combined
 
@@ -177,13 +163,68 @@ def populate_spotify_data(cur, sp, artists, songs):
             print(f"Spotify data not found for: {song} by {artist}")
     cur.connection.commit()
 
+# Fetch lyrics with retries
+def fetch_lyrics_with_retries(genius, title, artist, max_retries=3):
+    """Fetch lyrics with retries in case of timeouts or API failures."""
+    retries = 0
+    while retries < max_retries:
+        try:
+            song_info = genius.search_song(title, artist)
+            return song_info
+        except requests.exceptions.Timeout:
+            retries += 1
+            print(f"Retrying lyrics for {title} by {artist} (Attempt {retries}/{max_retries})...")
+            sleep(2)
+        except Exception as e:
+            print(f"Error fetching lyrics for {title} by {artist}: {e}")
+            return None
+    print(f"Failed to fetch lyrics for {title} by {artist} after {max_retries} retries.")
+    return None
+
+# Populate the lyrics table
+def populate_lyrics_table(cur, conn, artists, songs):
+    """Populate the lyrics table with song lyrics and word counts."""
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS lyrics (
+            id INTEGER PRIMARY KEY,
+            title TEXT,
+            artist TEXT,
+            word INTEGER
+        )
+    ''')
+    conn.commit()
+
+    # Genius API initialization
+    token = "-SPqPS1Wq_0zYs_L-31AVu0N_7Bx2-UcEmFQZAYs0CQ5zEeQKq083QV-VK0zLNHt"  # Replace with your Genius API token
+    genius = lyricsgenius.Genius(token, timeout=10)
+
+    for i, (artist, song) in enumerate(zip(artists, songs)):
+        print(f"Fetching lyrics for {song} by {artist}")
+        song_info = fetch_lyrics_with_retries(genius, song, artist)
+        if song_info and song_info.lyrics:
+            word_count = len(song_info.lyrics.split())
+            cur.execute('''
+                INSERT OR IGNORE INTO lyrics (id, title, artist, word)
+                VALUES (?, ?, ?, ?)
+            ''', (i + 1, song, artist, word_count))
+        else:
+            print(f"Lyrics not found for {song} by {artist}")
+
+    conn.commit()
+
 # Main execution
 if __name__ == "__main__":
     first_table()
     cur, conn = set_up_database("songs.db")
 
+    # Combine songs from both static and live sources
     artists_combined, songs_combined = combine_and_order(cur)
+
+    # Spotify API Authentication and Data Population
     sp = spotify_authenticate()
     populate_spotify_data(cur, sp, artists_combined, songs_combined)
+
+    # Populate lyrics data
+    populate_lyrics_table(cur, conn, artists_combined, songs_combined)
 
     conn.close()
