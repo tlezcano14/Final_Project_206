@@ -1,52 +1,47 @@
-# Gabriel Oliveira, Thomas Lezcano, Renard Richmond
-# Final Project 
-
 import requests
 import sqlite3
-import json
 import os
+import re
 from bs4 import BeautifulSoup
 import lyricsgenius
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+from time import sleep
 
+# Database setup
 def set_up_database(db_name):
-
     path = os.path.dirname(os.path.abspath(__file__))
     db_path = os.path.join(path, db_name)
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     return cur, conn
 
+# Ensure the songs table exists
 def first_table():
     cur, conn = set_up_database("songs.db")
     cur.execute('''CREATE TABLE IF NOT EXISTS songs (
         id INTEGER PRIMARY KEY AUTOINCREMENT, 
         title TEXT, 
-        artist TEXT)
-    ''')
-
-    conn.commit()
-    conn.close()
-
-first_table()
-
-def second_table():
-    cur, conn = set_up_database("songs.db")
-    cur.execute('''CREATE TABLE IF NOT EXISTS lyrics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        title TEXT, 
         artist TEXT,
-        word count INTEGER)
-    ''')
-    
+        spotify_id TEXT,
+        popularity INTEGER,
+        album TEXT
+    )''')
     conn.commit()
     conn.close()
 
-second_table()
+# Normalize strings
+def normalize_string(string):
+    """Remove special characters and standardize formatting."""
+    string = re.sub(r'[“”"\']', '', string).strip()  # Remove quotes
+    string = re.sub(r'\(.*?\)', '', string)  # Remove anything in parentheses
+    string = re.sub(r'feat\.|featuring', '', string, flags=re.IGNORECASE)  # Handle "feat." and "featuring"
+    return string.lower()
 
+# Scrape songs 51-100 from a static HTML file
 def scrape_from_static():
-    d = {}
-    end_artists = []  
-    end_songs = []    
+    end_artists = []
+    end_songs = []
 
     with open('RS100.html', 'r', encoding='utf-8') as file:
         static_html = file.read()
@@ -62,14 +57,15 @@ def scrape_from_static():
                 title = h2tag.get_text().strip()
                 if "," in title:
                     artist, song = title.split(",", 1)
-                    end_artists.append(artist)
-                    end_songs.append(song)
+                    end_artists.append(artist.strip())
+                    end_songs.append(song.strip())
     
     end_artists.reverse()
     end_songs.reverse()
 
     return end_artists, end_songs
 
+# Scrape songs 1-50 from a live URL
 def scrape_from_live_url():
     artists = []
     songs = []
@@ -88,21 +84,22 @@ def scrape_from_live_url():
 
                 if "," in title:
                     artist, song = title.split(",", 1)
-                    artists.append(artist)
-                    songs.append(song)
+                    artists.append(artist.strip())
+                    songs.append(song.strip())
     
     artists.reverse()
     songs.reverse()
     
     return artists, songs
 
+# Combine songs and artists from both sources
 def combine_and_order(cur):
     artists_50_1, songs_50_1 = scrape_from_live_url()
     artists_100_51, songs_100_51 = scrape_from_static()
 
     artists_combined = artists_50_1 + artists_100_51
     songs_combined = songs_50_1 + songs_100_51
-#hellooo
+
     batch_size = 25
     num_batches = 4  
 
@@ -118,42 +115,75 @@ def combine_and_order(cur):
             artist = artists_batch[i]
             id = start_index + i + 1  
 
-            # cur.execute('''
-            #     INSERT OR IGNORE INTO songs (id, title, artist)
-            #     VALUES (?, ?, ?)
-            # ''', (id, title, artist))
+            cur.execute('''
+                INSERT OR IGNORE INTO songs (id, title, artist)
+                VALUES (?, ?, ?)
+            ''', (id, title, artist))
 
-        # cur.connection.commit()
+        cur.connection.commit()
 
     return artists_combined, songs_combined
 
-def lyrics(songs, artists): 
-    token = "-SPqPS1Wq_0zYs_L-31AVu0N_7Bx2-UcEmFQZAYs0CQ5zEeQKq083QV-VK0zLNHt"
-    genius = lyricsgenius.Genius(token)
+# Spotify authentication
+def spotify_authenticate():
+    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+        client_id='e1995ad727784f5abd056cc7e77d272c',
+        client_secret='fa4a74248a304f39b1a7007c70f671d0',
+        redirect_uri='http://localhost:8888/callback',
+        scope='user-library-read'
+    ))
+    return sp
 
-    for x in range(len(songs)):
-        song_info = genius.search_song(songs[x], artists[x])
-        if song_info:
-            text = song_info.lyrics
-            word_count = len(text.split())
+# Fetch Spotify data with a fallback mechanism
+def get_spotify_data_with_fallback(sp, title, artist):
+    sleep(0.5)  # Delay to avoid hitting rate limits
+    query = f"track:{normalize_string(title)} artist:{normalize_string(artist)}"
+    results = sp.search(q=query, type='track', limit=1)
+
+    if results['tracks']['items']:
+        track = results['tracks']['items'][0]
+        return {
+            'spotify_id': track['id'],
+            'popularity': track['popularity'],
+            'album': track['album']['name']
+        }
+
+    # Retry with title only
+    print(f"Retrying with title only: {title}")
+    query = f"track:{normalize_string(title)}"
+    results = sp.search(q=query, type='track', limit=1)
+    if results['tracks']['items']:
+        track = results['tracks']['items'][0]
+        return {
+            'spotify_id': track['id'],
+            'popularity': track['popularity'],
+            'album': track['album']['name']
+        }
+
+    return None
+
+# Populate Spotify data
+def populate_spotify_data(cur, sp, artists, songs):
+    for i, (artist, song) in enumerate(zip(artists, songs)):
+        print(f"Fetching Spotify data for: {song} by {artist}")
+        spotify_data = get_spotify_data_with_fallback(sp, song, artist)
+        if spotify_data:
             cur.execute('''
-                SELECT id FROM songs WHERE title = ? AND artist = ?
-            ''', (songs[x], artists[x]))
-            song_id = cur.fetchone()  # Get the song ID for the given title and artist
+                UPDATE songs
+                SET spotify_id = ?, popularity = ?, album = ?
+                WHERE id = ?
+            ''', (spotify_data['spotify_id'], spotify_data['popularity'], spotify_data['album'], i + 1))
+        else:
+            print(f"Spotify data not found for: {song} by {artist}")
+    cur.connection.commit()
 
-            if song_id:
-                song_id = song_id[0]  # Extract the actual song ID from the tuple
+# Main execution
+if __name__ == "__main__":
+    first_table()
+    cur, conn = set_up_database("songs.db")
 
-                # Now insert data into the lyrics table
-                cur.execute('''
-                    INSERT OR IGNORE INTO lyrics (id, title, artist, word)
-                    VALUES (?, ?, ?, ?)
-                ''', (song_id, songs[x], artists[x], word_count))
-
-                conn.commit()
+    artists_combined, songs_combined = combine_and_order(cur)
+    sp = spotify_authenticate()
+    populate_spotify_data(cur, sp, artists_combined, songs_combined)
 
     conn.close()
-
-cur, conn = set_up_database("songs.db")
-artists_combined, songs_combined = combine_and_order(cur)
-lyrics(songs_combined, artists_combined)
