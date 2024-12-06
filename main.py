@@ -274,6 +274,56 @@ def populate_lyrics_table_with_duration(cur, conn, artists, songs, sp):
         
     conn.commit()
 
+def update_duration_and_wpm(cur, sp):
+    """Update the 'duration' and 'wpm' columns for songs with null values."""
+    
+    # Fetch songs with null 'duration' values
+    cur.execute("SELECT id, title, artist, word FROM lyrics WHERE duration IS NULL")
+    rows = cur.fetchall()
+
+    for row in rows:
+        song_id, title, artist, word_count = row
+        print(f"Updating song: {title} by {artist}")
+
+        # Fetch Spotify data
+        spotify_data = get_spotify_data_with_fallback(sp, title, artist)
+        
+        if spotify_data:
+            # Update duration (in minutes:seconds format)
+            duration_str = spotify_data['duration']
+            # Convert duration to minutes and seconds
+            if duration_str != "Unknown":
+                cur.execute('''
+                    UPDATE lyrics
+                    SET duration = ?
+                    WHERE id = ?
+                ''', (duration_str, song_id))
+                print(f"Updated duration for {title}: {duration_str}")
+
+                # Calculate words per minute (wpm)
+                if word_count > 0:
+                    duration_parts = duration_str.split(":")
+                    minutes = int(duration_parts[0])
+                    seconds = int(duration_parts[1])
+                    total_duration_in_minutes = minutes + seconds / 60.0
+                    wpm = word_count / total_duration_in_minutes if total_duration_in_minutes > 0 else 0
+
+                    cur.execute('''
+                        UPDATE lyrics
+                        SET wpm = ?
+                        WHERE id = ?
+                    ''', (wpm, song_id))
+                    print(f"Updated wpm for {title}: {wpm:.2f}")
+                else:
+                    print(f"Warning: No word count for {title}, skipping wpm calculation.")
+            else:
+                print(f"Could not update duration for {title}. Duration is 'Unknown'.")
+        else:
+            print(f"Warning: No Spotify data found for {title} by {artist}.")
+
+    # Commit the changes to the database
+    cur.connection.commit()
+
 def delete_extra_rows(cur):
     cur.execute("DELETE FROM songs WHERE id > 100")
     cur.connection.commit()
@@ -325,6 +375,9 @@ def main():
     
     sp = spotify_authenticate()  # Authenticate with Spotify
     populate_lyrics_table_with_duration(cur, conn, artists, songs, sp)  # Populate lyrics and duration
+    
+    # Update 'duration' and 'wpm' columns
+    update_duration_and_wpm(cur, sp)  # Update existing rows with duration and wpm
 
     conn.close()
 
