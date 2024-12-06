@@ -38,7 +38,8 @@ def first_table():
         id INTEGER PRIMARY KEY AUTOINCREMENT, 
         title TEXT, 
         artist TEXT,
-        popularity INTEGER
+        popularity INTEGER,
+        UNIQUE(title, artist)  -- Add a unique constraint to prevent duplicate songs
     )''')
     conn.commit()
     conn.close()
@@ -147,6 +148,15 @@ def scrape_from_live_url():
 
 # Combine songs and artists from both sources
 def combine_and_order(cur):
+    # Check if songs table already has 100 rows
+    cur.execute('SELECT COUNT(*) FROM songs')
+    row_count = cur.fetchone()[0]
+    
+    if row_count >= 100:
+        print("The 'songs' table already has 100 rows. Skipping new data insertion.")
+        return [], []  # Return empty lists since no new songs will be added
+    
+    # Otherwise, proceed with scraping and inserting data
     artists_50_1, songs_50_1 = scrape_from_live_url()
     artists_100_51, songs_100_51 = scrape_from_static()
 
@@ -154,14 +164,15 @@ def combine_and_order(cur):
     songs_combined = songs_50_1 + songs_100_51
 
     for i, (artist, song) in enumerate(zip(artists_combined, songs_combined), 1):
-        # Check if the song already exists
+        # First, we ensure there are no duplicates based on both title and artist
         cur.execute('''
             SELECT id FROM songs WHERE title = ? AND artist = ?
         ''', (song, artist))
         existing_song = cur.fetchone()
 
-        # If the song does not exist, insert it
+        # If the song already exists (checked by title + artist), skip insertion
         if existing_song is None:
+            # Insert song with a placeholder for popularity and other columns
             cur.execute('''
                 INSERT INTO songs (id, title, artist)
                 VALUES (?, ?, ?)
