@@ -8,6 +8,21 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from time import sleep
 
+def fetch_lyrics_with_retries(genius, song, artist, max_retries=3):
+    """Fetch lyrics from Genius with retries in case of failure."""
+    retries = 0
+    while retries < max_retries:
+        try:
+            song_info = genius.search_song(song, artist)
+            if song_info:
+                return song_info
+        except Exception as e:
+            print(f"Error fetching lyrics for {song} by {artist}: {e}")
+            retries += 1
+            print(f"Retrying ({retries}/{max_retries})...")
+            sleep(2)  # Wait before retrying
+    return None  # Return None if we exhaust retries
+
 # Database setup
 def set_up_database(db_name):
     path = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +74,14 @@ def ensure_lyrics_table_structure(cur, conn):
         ''')
         conn.commit()
         print("'duration' column added to 'lyrics' table.")
+
+    # Check if the 'wpm' column exists, if not, add it
+    if 'wpm' not in columns:
+        cur.execute('''
+            ALTER TABLE lyrics ADD COLUMN wpm REAL;
+        ''')
+        conn.commit()
+        print("'wpm' column added to 'lyrics' table.")
 
 # Normalize strings
 def normalize_string(string):
@@ -256,37 +279,55 @@ def delete_extra_rows(cur):
     cur.connection.commit()
     print("Deleted rows beyond ID 100 from 'songs' table.")
 
+def reset_song_index(cur):
+    # Step 1: Create a temporary table with the same structure as the 'songs' table
+    cur.execute('''
+        CREATE TABLE temp_songs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            artist TEXT,
+            popularity INTEGER
+        );
+    ''')
+    cur.connection.commit()
+
+    # Step 2: Insert all data into the temporary table
+    cur.execute('''
+        INSERT INTO temp_songs (title, artist, popularity)
+        SELECT title, artist, popularity FROM songs;
+    ''')
+    cur.connection.commit()
+
+    # Step 3: Drop the original 'songs' table
+    cur.execute('DROP TABLE IF EXISTS songs')
+    cur.connection.commit()
+
+    # Step 4: Rename the temporary table to 'songs'
+    cur.execute('ALTER TABLE temp_songs RENAME TO songs')
+    cur.connection.commit()
+
+    print("Reset index and updated 'songs' table.")
+
 
 # Main function to update the database
 def main():
     cur, conn = set_up_database("songs.db")
     first_table()
-    
+
     remove_columns_from_songs(cur)  # Remove 'spotify_id' from 'songs'
     
     delete_extra_rows(cur)  # Delete rows beyond ID 100
     
     artists, songs = combine_and_order(cur)  # Combine songs from both sources
     
+    # Reset the index in the 'songs' table
+    reset_song_index(cur)
+    
     sp = spotify_authenticate()  # Authenticate with Spotify
     populate_lyrics_table_with_duration(cur, conn, artists, songs, sp)  # Populate lyrics and duration
 
     conn.close()
 
-def fetch_lyrics_with_retries(genius, song, artist, max_retries=3):
-    """Fetch lyrics from Genius with retries in case of failure."""
-    retries = 0
-    while retries < max_retries:
-        try:
-            song_info = genius.search_song(song, artist)
-            if song_info:
-                return song_info
-        except Exception as e:
-            print(f"Error fetching lyrics for {song} by {artist}: {e}")
-            retries += 1
-            print(f"Retrying ({retries}/{max_retries})...")
-            sleep(2)  # Wait before retrying
-    return None  # Return None if we exhaust retries
-
 if __name__ == "__main__":
     main()
+
