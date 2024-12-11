@@ -1,0 +1,24 @@
+import sqlite3
+import csv
+
+# Connect to the database
+conn = sqlite3.connect("songs.db")
+cur = conn.cursor()
+
+# Query the data from the "songs" table
+cur.execute("SELECT * FROM lyrics")
+rows = cur.fetchall()
+
+# Get column names
+column_names = [description[0] for description in cur.description]
+
+# Write to CSV
+with open("lyrics.csv", "w", newline="", encoding="utf-8") as csv_file:
+    writer = csv.writer(csv_file)
+    writer.writerow(column_names)  # Write header row
+    writer.writerows(rows)  # Write data rows
+
+print("Data exported to lyrics.csv successfully!")
+
+# Close the connection
+conn.close()

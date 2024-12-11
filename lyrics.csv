@@ -1,0 +1,101 @@
+id,title,artist,word,duration,wpm
+1, “Dancing on My Own”,Robyn,292,4:38,63.021582733812956
+2, “Alright”,Kendrick Lamar,754,3:39,206.57534246575344
+3, “Rolling in the Deep”,Adele,565,3:48,148.6842105263158
+4, “Formation”,Beyoncé,727,3:26,211.74757281553397
+5,  “All Too Well”,Taylor Swift,495,10:13,48.450244698205545
+6, “Runaway”,Kanye West,773,9:07,84.78976234003656
+7," “Thank U, Next”",Ariana Grande,480,3:27,139.1304347826087
+8, “Follow Your Arrow”,Kacey Musgraves,338,3:19,101.90954773869348
+9, “I Like It”,Cardi B feat. Bad Bunny and J Balvin,839,4:13,198.97233201581028
+10, “Hotline Bling”,Drake,451,4:27,101.34831460674157
+11, “Royals”,Lorde,394,3:10,124.42105263157896
+12, “Old Town Road”,Lil Nas X,216,2:37,82.54777070063695
+13, “Your Best American Girl”,Mitski,187,3:32,52.924528301886795
+14, “Shallow”,Lady Gaga and Bradley Cooper,234,3:35,65.30232558139535
+15, “Mi Gente”,J Balvin and Willy William,306,3:05,99.24324324324324
+16, “Stoned and Starving”,Parquet Courts,186,5:11,35.88424437299035
+17, “Get Lucky”,Daft Punk,793,6:09,128.9430894308943
+18, “Bad and Boujee”,Migos,1269,5:43,221.98250728862973
+19, “Hold On”,Alabama Shakes,207,3:46,54.955752212389385
+20, “Oblivion”,Grimes,234,4:11,55.93625498007968
+21, “Springsteen”,Eric Church,346,4:23,78.93536121673003
+22, “Drunk in Love”,Beyoncé feat. Jay-Z,951,5:23,176.656346749226
+23, “Despacito”,Luis Fonsi feat. Daddy Yankee and Justin Bieber,734,3:50,191.47826086956522
+24, “Truth Hurts”,Lizzo,532,2:53,184.50867052023122
+25, “Adorn”,Miguel,370,3:13,115.02590673575129
+26, “Mask Off”,Future,551,3:24,162.05882352941177
+27,“Chandelier”,Sia,395,3:36,109.72222222222221
+28,"“Archie, Marry Me”",Alvvays,166,3:16,50.816326530612244
+29,“Sorry”,Justin Bieber,381,3:20,114.3
+30,“We Found Love”,Rihanna feat. Calvin Harris,255,3:35,71.16279069767441
+31,“Sign of the Times”,Harry Styles,384,5:40,67.76470588235294
+32,“Bodak Yellow”,Cardi B,709,3:43,190.76233183856502
+33,"“Hold On, We’re Going Home”",Drake,388,3:47,102.55506607929516
+34,“Bad Guy”,Billie Eilish,285,3:14,88.14432989690721
+35,“Night Shift”,Lucy Dacus,357,6:31,54.78260869565217
+36,“Sicko Mode”,Travis Scott feat. Drake,1422,5:12,273.46153846153845
+37,“My Church”,Maren Morris,280,3:17,85.27918781725889
+38,“God in Chicago”,Craig Finn,493,4:45,103.78947368421052
+39,“Bad Liar”,Selena Gomez,497,3:34,139.34579439252337
+40,“Teenage Dream”,Katy Perry,409,3:47,108.1057268722467
+41,“Novacaine”,Frank Ocean,522,2:49,185.32544378698228
+42,“High for This”,The Weeknd,193,4:09,46.50602409638554
+43,“Call Me Maybe”,Carly Rae Jepsen,428,3:13,133.05699481865284
+44,“Beez in the Trap”,Nicki Minaj,744,4:28,166.56716417910448
+45,“Mariners Apartment Complex”,Lana Del Rey,325,4:07,78.94736842105264
+46,“N****s in Paris”,Jay-Z and Kanye West,4078,3:05,1322.5945945945946
+47,“212”,Azealia Banks,573,3:24,168.52941176470588
+48,“Girl Crush”,Little Big Town,217,3:13,67.46113989637306
+49,“Every Breaking Wave”,U2,311,4:12,74.04761904761905
+50,“Turn Down for What”,DJ Snake feat. Lil Jon,156,3:33,43.94366197183099
+51,“Habits (Stay High)”,Tove Lo,346,3:29,99.33014354066985
+52,“Everlasting Light”,The Black Keys,151,3:23,44.63054187192118
+53,“Avant Gardener”,Courtney Barnett,385,5:12,74.03846153846153
+54,“Nice for What”,Drake,800,3:30,228.57142857142858
+55,“The Wire”,Haim,612,4:05,149.87755102040816
+56,“I Can’t Give Everything Away”,David Bowie,163,5:47,28.18443804034582
+57,“Story of My Life”,One Direction,416,4:05,101.87755102040818
+58,“New Romantics”,Taylor Swift,477,3:50,124.43478260869564
+59,“Edge of Glory”,Lady Gaga,450,5:20,84.375
+60,“Diamonds”,Rihanna,394,3:45,105.06666666666666
+61,“Never Be the Same”,Camila Cabello,459,3:46,121.85840707964601
+62,“We Can’t Stop”,Miley Cyrus,586,3:51,152.2077922077922
+63,“Cruise (Remix)”,Florida Georgia Line feat. Nelly,666,3:28,192.1153846153846
+64,“Someone Like You”,Adele,352,4:45,74.10526315789474
+65,“Bound 2”,Kanye West,490,3:49,128.38427947598254
+66,“Uptown Funk”,Mark Ronson feat. Bruno Mars,705,4:29,157.24907063197026
+67,“I Love it”,Icona Pop feat. Charli XCX,786,2:37,300.38216560509557
+68,“Good Intentions Paving Company”,Joanna Newsom,472,,
+69,“Drunk Drivers/Killer Whales”,Car Seat Headrest,441,6:14,70.74866310160428
+70,“Ultralight Beam”,Kanye West,770,5:20,144.375
+71,“Boys”,Charli XCX,343,2:42,127.03703703703702
+72,"Nio García, Darell, Nicky Jam, Bad Bunny, Ozuna, “Te Boté”",Casper,744,6:57,107.05035971223022
+73,“Blank Space”,Taylor Swift,541,3:51,140.5194805194805
+74,“XO Tour Llif3”,Lil Uzi Vert,508,3:02,167.47252747252747
+75,“Blood on the Leaves”,Kanye West,601,5:59,100.44568245125348
+76,“Me & Magdalena”,The Monkees,179,3:33,50.42253521126761
+77,“Let It Happen”,Tame Impala,361,7:47,46.38115631691649
+78,“Pristine”,Snail Mail,250,4:55,50.847457627118644
+79,“Nights”,Frank Ocean,636,5:07,124.29967426710098
+80,“Shut Up Kiss Me”,Angel Olsen,268,3:22,79.6039603960396
+81,“Jealous”,Nick Jonas,384,3:43,103.31838565022422
+82,“Green Light”,Lorde,453,3:54,116.15384615384616
+83,“Everything Is Embarrassing”,Sky Ferreria,437,4:09,105.3012048192771
+84,“Soy Yo”,Bomba Estereo,286,2:39,107.9245283018868
+85,“2 Weeks”,FKA Twigs,1161,0:35,1990.2857142857142
+86,“Work From Home”,Fifth Harmony,508,3:34,142.42990654205607
+87,“Rill Rill”,Sleigh Bells,449,3:49,117.64192139737992
+88,“Latch”,Disclosure feat. Sam Smith,158,4:15,37.1764705882353
+89,“Bad Girls”,M.I.A.,480,3:47,126.87224669603525
+90,“Here”,Alessia Cara,462,3:19,139.2964824120603
+91,“Say My Name”,Tove Styrke,442,3:25,129.3658536585366
+92,“Powerglide”,Rae Sremmurd feat. Juicy J,1507,5:32,272.34939759036143
+93,“Palace”,A$AP Rocky,410,2:42,151.85185185185185
+94,“Seasons (Waiting on You)”,Future Islands,209,3:46,55.48672566371682
+95,“How I Roll”,Britney Spears,373,3:36,103.61111111111111
+96,“Emmylou”,First Aid Kit,320,4:18,74.4186046511628
+97,“Mirrors”,Justin Timberlake,1083,8:04,134.25619834710744
+98,“Love It If We Made It”,The 1975,346,4:12,82.38095238095238
+99,“Exchange”,Bryson Tiller,434,3:14,134.22680412371133
+100,“Every Teardrop Is a Waterfall”,Coldplay,287,4:00,71.75
