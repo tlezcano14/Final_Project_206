@@ -7,20 +7,7 @@ import lyricsgenius
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from time import sleep
-
-def fetch_lyrics_with_retries(genius, song, artist, max_retries=3):
-    retries = 0
-    while retries < max_retries:
-        try:
-            song_info = genius.search_song(song, artist)
-            if song_info:
-                return song_info
-        except Exception as e:
-            print(f"Error fetching lyrics for {song} by {artist}: {e}")
-            retries += 1
-            print(f"Retrying ({retries}/{max_retries})...")
-            sleep(2)  
-    return None  
+import time
 
 def set_up_database(db_name):
     path = os.path.dirname(os.path.abspath(__file__))
@@ -29,58 +16,41 @@ def set_up_database(db_name):
     cur = conn.cursor()
     return cur, conn
 
-def first_table():
-    cur, conn = set_up_database("songs.db")
-    cur.execute('''CREATE TABLE IF NOT EXISTS songs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        title TEXT, 
-        artist TEXT,
-        popularity INTEGER,
-        UNIQUE(title, artist)  -- Add a unique constraint to prevent duplicate songs
-    )''')
+def create_artists_table():
+    cur, conn = set_up_database("final.db")
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS artists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE
+        )
+    ''')
     conn.commit()
     conn.close()
 
-def remove_columns_from_songs(cur):
+def create_songs_table():
+    cur, conn = set_up_database("final.db")
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS temp_songs AS
-        SELECT id, title, artist, popularity
-        FROM songs
+        CREATE TABLE IF NOT EXISTS songs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            artist TEXT,
+            word TEXT,
+            duration TEXT,
+            wpm INTEGER,
+            popularity INTEGER
+        )
     ''')
-    cur.connection.commit()
-
-    cur.execute('DROP TABLE IF EXISTS songs')
-    cur.connection.commit()
-
-    cur.execute('ALTER TABLE temp_songs RENAME TO songs')
-    cur.connection.commit()
-
-    print("'spotify_id' column removed from 'songs' table.")
-
-def ensure_lyrics_table_structure(cur, conn):
-    cur.execute('PRAGMA table_info(lyrics);')  
-    columns = [column[1] for column in cur.fetchall()]
-
-    if 'duration' not in columns:
-        cur.execute('''
-            ALTER TABLE lyrics ADD COLUMN duration TEXT;
-        ''')
-        conn.commit()
-        print("'duration' column added to 'lyrics' table.")
-
-    if 'wpm' not in columns:
-        cur.execute('''
-            ALTER TABLE lyrics ADD COLUMN wpm REAL;
-        ''')
-        conn.commit()
-        print("'wpm' column added to 'lyrics' table.")
+    conn.commit()
+    conn.close()
 
 def normalize_string(string):
-    """Remove special characters and standardize formatting."""
-    string = re.sub(r'[“”"\']', '', string).strip()  
-    string = re.sub(r'\(.*?\)', '', string)  
-    string = re.sub(r'feat\.|featuring', '', string, flags=re.IGNORECASE)  
-    return string.lower()
+    """Remove special characters and standardize formatting, including quotes."""
+    string = re.sub(r'[“”]', '', string)
+    string = re.sub(r"[\"'\x92\x93\x94]", '', string)  
+    string = re.sub(r'\(.*?\)', '', string)
+    string = re.sub(r'feat\.|featuring', '', string, flags=re.IGNORECASE)
+    string = re.sub(r'[^\w\s]', '', string)
+    return string.lower().strip()
 
 def scrape_from_static():
     end_artists = []
@@ -134,13 +104,22 @@ def scrape_from_live_url():
     
     return artists, songs
 
-def combine_and_order(cur):
+def combine_and_copy_data(cur, sp):
     cur.execute('SELECT COUNT(*) FROM songs')
     row_count = cur.fetchone()[0]
-    
+
     if row_count >= 100:
         print("The 'songs' table already has 100 rows. Skipping new data insertion.")
-        return [], []  
+        
+        # Fetch the existing songs and artists from the database
+        cur.execute('''
+            SELECT s.title, s.artist FROM songs s ORDER BY rowid ASC
+        ''')
+        rows = cur.fetchall()
+        artists = [row[1] for row in rows]
+        songs = [row[0] for row in rows]
+        
+        return artists, songs
 
     artists_50_1, songs_50_1 = scrape_from_live_url()
     artists_100_51, songs_100_51 = scrape_from_static()
@@ -148,30 +127,96 @@ def combine_and_order(cur):
     artists_combined = artists_50_1 + artists_100_51
     songs_combined = songs_50_1 + songs_100_51
 
-    remaining_count = 100 - row_count
-    songs_to_insert = zip(artists_combined, songs_combined)[:remaining_count]
+    # Insert data in batches of 25
+    batch_size = 25
+    start_index = row_count
+    end_index = min(start_index + batch_size, 100)
 
-    for i, (artist, song) in enumerate(songs_to_insert, row_count + 1):
+    for i, (artist, song) in enumerate(list(zip(artists_combined, songs_combined))[start_index:end_index], start=start_index + 1):
         cur.execute('''
-            SELECT id FROM songs WHERE title = ? AND artist = ?
-        ''', (song, artist))
-        existing_song = cur.fetchone()
+            SELECT name FROM artists WHERE name = ?
+        ''', (artist,))
+        artist_name = cur.fetchone()
 
-        if existing_song is None:
+        if artist_name is None:
+            # Insert the artist if not already present
             cur.execute('''
-                INSERT INTO songs (id, title, artist)
-                VALUES (?, ?, ?)
-            ''', (i, song, artist))
+                INSERT INTO artists (name) VALUES (?)
+            ''', (artist,))
+        
+        spotify_data = get_spotify_data_with_fallback(sp, song, artist)
+        if spotify_data:
+            duration = spotify_data['duration']
+            popularity = spotify_data['popularity']
+        else:
+            duration = "Unknown"
+            popularity = None
+
+        cur.execute('''
+            INSERT INTO songs (title, artist, popularity, word, duration, wpm)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (song, artist, popularity, "", duration, ""))
 
     cur.connection.commit()
+
+    copy_columns_data('songs.db', 'final.db', 'lyrics', 'songs', ['word', 'wpm'])
+
     return artists_combined, songs_combined
 
-def clean_up_songs_table(cur):
-    cur.execute('''
-        DELETE FROM songs WHERE id > 100
-    ''')
-    cur.connection.commit()
-    print("Deleted rows beyond ID 100 from 'songs' table.")
+def copy_columns_data(source_db, target_db, source_table, target_table, column_names):
+    try:
+        source_conn = sqlite3.connect(source_db)
+        source_cursor = source_conn.cursor()
+
+        source_cursor.execute(f"PRAGMA table_info({source_table})")
+        columns = [col[1] for col in source_cursor.fetchall()]
+        
+        for column_name in column_names:
+            if column_name not in columns:
+                raise ValueError(f"Column '{column_name}' does not exist in source table '{source_table}'")
+
+        placeholders = ', '.join(column_names)
+        source_cursor.execute(f"SELECT {placeholders} FROM {source_table}")
+        data = source_cursor.fetchall()
+
+        target_conn = sqlite3.connect(target_db)
+        target_cursor = target_conn.cursor()
+
+        batch_size = 25
+        total_rows = len(data)
+        num_batches = (total_rows // batch_size) + (1 if total_rows % batch_size != 0 else 0)
+
+        for batch_num in range(num_batches):
+            start_index = batch_num * batch_size
+            end_index = min((batch_num + 1) * batch_size, total_rows)
+            current_batch = data[start_index:end_index]
+
+            for idx, row in enumerate(current_batch, start=start_index + 1):
+                target_cursor.execute(f"UPDATE {target_table} SET word = ?, wpm = ? WHERE rowid = ?", 
+                                      (row[0], row[1], idx))
+
+            target_conn.commit()
+            print(f"Inserted rows {start_index + 1} to {end_index} into target table.")
+
+        print(f"Data from columns {column_names} in table '{source_table}' has been successfully copied to the target database.")
+
+    except sqlite3.Error as e:
+        print(f"Error: {e}")
+    except ValueError as e:
+        print(f"Value Error: {e}")
+    finally:
+       
+        if source_conn:
+            source_conn.close()
+        if target_conn:
+            target_conn.close()
+
+
+source_db = 'songs.db'  # Path to the source database
+target_db = 'final.db'  # Path to the target database
+source_table = 'lyrics'  # Name of the source table
+target_table = 'songs'  # Name of the target table
+column_names = ['word', 'wpm']  # List of columns to copy
 
 def spotify_authenticate():
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
@@ -183,55 +228,146 @@ def spotify_authenticate():
     return sp
 
 def get_spotify_data_with_fallback(sp, title, artist):
-    sleep(0.5) 
-    query = f"track:{normalize_string(title)} artist:{normalize_string(artist)}"
-    results = sp.search(q=query, type='track', limit=1)
+    retries = 3  
 
-    if results['tracks']['items']:
-        track = results['tracks']['items'][0]
-        duration_ms = track.get('duration_ms', None)  
-        if duration_ms:
-            duration_sec = duration_ms / 1000  
-            minutes = int(duration_sec // 60)
-            seconds = int(duration_sec % 60)
-            duration = f"{minutes}:{seconds:02d}" 
-            return {
-                'spotify_id': track['id'],
-                'popularity': track['popularity'],
-                'album': track['album']['name'],
-                'duration': duration  
-            }
+    for attempt in range(retries):
+        sleep(0.5)  
+        normalized_title = normalize_string(title)
+        normalized_artist = normalize_string(artist)
+
+      
+        query = f"track:{normalized_title} artist:{normalized_artist}"
+        print(f"Searching for {title} by {artist} using query: {query}")  
+        results = sp.search(q=query, type='track', limit=1)
+
+        if results['tracks']['items']:
+            track = results['tracks']['items'][0]
+            duration_ms = track.get('duration_ms', None)  
+
+            if duration_ms:
+                duration_sec = duration_ms / 1000  # Convert ms to seconds
+                minutes = int(duration_sec // 60)
+                seconds = int(duration_sec % 60)
+                duration = f"{minutes}:{seconds:02d}"
+                print(f"Found track: {title} by {artist}, duration: {duration}")  # Log successful fetch
+                return {
+                    'spotify_id': track['id'],
+                    'popularity': track['popularity'],
+                    'album': track['album']['name'],
+                    'duration': duration
+                }
+            else:
+                print(f"Warning: No duration found for track: {title} by {artist}")
         else:
-            print(f"Warning: No duration found for track: {title} by {artist}")
-    else:
-        print(f"Warning: No track found for query: {title} by {artist}")
+            print(f"Warning: No track found for query: {query}")
+                
+            # If the first query failed, retry with only the song title (ignoring artist)
+            print(f"Retrying with title only: {title}")
+            query = f"track:{normalized_title}"
+            results = sp.search(q=query, type='track', limit=1)
 
-    print(f"Retrying with title only: {title}")
-    query = f"track:{normalize_string(title)}"
-    results = sp.search(q=query, type='track', limit=1)
-    if results['tracks']['items']:
-        track = results['tracks']['items'][0]
-        duration_ms = track.get('duration_ms', None)
-        if duration_ms:
-            duration_sec = duration_ms / 1000
-            minutes = int(duration_sec // 60)
-            seconds = int(duration_sec % 60)
-            duration = f"{minutes}:{seconds:02d}"
-            return {
-                'spotify_id': track['id'],
-                'popularity': track['popularity'],
-                'album': track['album']['name'],
-                'duration': duration
-            }
+            if results['tracks']['items']:
+                track = results['tracks']['items'][0]
+                duration_ms = track.get('duration_ms', None)
+
+                if duration_ms:
+                    duration_sec = duration_ms / 1000  
+                    minutes = int(duration_sec // 60)
+                    seconds = int(duration_sec % 60)
+                    duration = f"{minutes}:{seconds:02d}"
+                    print(f"Found track (title only): {title}, duration: {duration}") 
+                    return {
+                        'spotify_id': track['id'],
+                        'popularity': track['popularity'],
+                        'album': track['album']['name'],
+                        'duration': duration
+                    }
+                else:
+                    print(f"Warning: No duration found for track (title only): {title}")
+            else:
+                print(f"Warning: No track found for title-only query: {title}")
+    return None  
+
+def update_artist_ids_in_songs(db_name):
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+
+    sql_query = '''
+        UPDATE songs
+        SET artist = (
+            SELECT artists.id
+            FROM artists
+            WHERE artists.name = songs.artist
+        )
+        WHERE EXISTS (
+            SELECT 1
+            FROM artists
+            WHERE artists.name = songs.artist
+        );
+    '''
+
+    cur.execute(sql_query)
+
+    conn.commit()
+    conn.close()
+
+def fetch_lyrics_and_count_words(genius, song, artist):
+    retries = 3  
+    delay = 5    
+
+    for attempt in range(retries):
+        
+        song_info = genius.search_song(song, artist)
+        if song_info and song_info.lyrics:
+            lyrics = song_info.lyrics
+            
+            word_count = len(lyrics.split())
+            print(f"Fetched {word_count} words for {song} by {artist}")
+            return word_count
         else:
-            print(f"Warning: No duration found for track (title only): {title}")
+            print(f"No lyrics found for {song} by {artist}")
+            return 0  # Return 0 if no lyrics are found
+    return 0  # Return 0 after retries if still no success
 
-    return None
-    
+def update_songs_with_lyrics_and_word_count(db_name, genius, sp):
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+
+    cur.execute('SELECT title, artist FROM songs')
+    songs = cur.fetchall()
+
+    for song, artist in songs:
+       
+        word_count = fetch_lyrics_and_count_words(genius, song, artist)
+        
+       
+        spotify_data = get_spotify_data_with_fallback(sp, song, artist)
+        duration = spotify_data['duration'] if spotify_data else "Unknown"
+        
+      
+        if spotify_data and spotify_data['duration'] != "Unknown":
+            # Duration in "mm:ss" format, so we need to extract the minutes and seconds
+            minutes, seconds = map(int, duration.split(":"))
+            total_seconds = minutes * 60 + seconds
+            if total_seconds > 0:
+                wpm = word_count / (total_seconds / 60)  # Words per minute
+            else:
+                wpm = 0
+        else:
+            wpm = 0
+
+        
+        cur.execute('''
+            UPDATE songs
+            SET word = ?, duration = ?, wpm = ?
+            WHERE title = ? AND artist = ?
+        ''', (word_count, duration, int(wpm), song, artist))
+
+    conn.commit()
+    conn.close()
+
 def populate_lyrics_table_with_duration(cur, conn, artists, songs, sp):
     """Populate the lyrics table with song lyrics, word counts, and duration."""
-    
-    ensure_lyrics_table_structure(cur, conn)
 
     token = "-SPqPS1Wq_0zYs_L-31AVu0N_7Bx2-UcEmFQZAYs0CQ5zEeQKq083QV-VK0zLNHt"  
     genius = lyricsgenius.Genius(token, timeout=10)
@@ -239,18 +375,21 @@ def populate_lyrics_table_with_duration(cur, conn, artists, songs, sp):
     for i, (artist, song) in enumerate(zip(artists, songs)):
         print(f"Fetching lyrics for {song} by {artist}")
         
+        # Get Spotify data (duration)
         spotify_data = get_spotify_data_with_fallback(sp, song, artist)
         
         if spotify_data:
             duration = spotify_data['duration']
         else:
             duration = "Unknown"  
-        
-        song_info = fetch_lyrics_with_retries(genius, song, artist)
+     
+        song_info = fetch_lyrics_and_count_words(genius, song, artist)
         
         if song_info and song_info.lyrics:
+       
             word_count = len(song_info.lyrics.split())
 
+            
             cur.execute('''
                 INSERT OR IGNORE INTO lyrics (id, title, artist, word, duration)
                 VALUES (?, ?, ?, ?, ?)
@@ -260,100 +399,26 @@ def populate_lyrics_table_with_duration(cur, conn, artists, songs, sp):
         
     conn.commit()
 
-def update_duration_and_wpm(cur, sp):
-    """Update the 'duration' and 'wpm' columns for songs with null values."""
-    
-    cur.execute("SELECT id, title, artist, word FROM lyrics WHERE duration IS NULL")
-    rows = cur.fetchall()
-
-    for row in rows:
-        song_id, title, artist, word_count = row
-        print(f"Updating song: {title} by {artist}")
-
-        spotify_data = get_spotify_data_with_fallback(sp, title, artist)
-        
-        if spotify_data:
-            duration_str = spotify_data['duration']
-            if duration_str != "Unknown":
-                cur.execute('''
-                    UPDATE lyrics
-                    SET duration = ?
-                    WHERE id = ?
-                ''', (duration_str, song_id))
-                print(f"Updated duration for {title}: {duration_str}")
-
-                if word_count > 0:
-                    duration_parts = duration_str.split(":")
-                    minutes = int(duration_parts[0])
-                    seconds = int(duration_parts[1])
-                    total_duration_in_minutes = minutes + seconds / 60.0
-                    wpm = word_count / total_duration_in_minutes if total_duration_in_minutes > 0 else 0
-
-                    cur.execute('''
-                        UPDATE lyrics
-                        SET wpm = ?
-                        WHERE id = ?
-                    ''', (wpm, song_id))
-                    print(f"Updated wpm for {title}: {wpm:.2f}")
-                else:
-                    print(f"Warning: No word count for {title}, skipping wpm calculation.")
-            else:
-                print(f"Could not update duration for {title}. Duration is 'Unknown'.")
-        else:
-            print(f"Warning: No Spotify data found for {title} by {artist}.")
-
-    cur.connection.commit()
-
-def delete_extra_rows(cur):
-    cur.execute("DELETE FROM songs WHERE id > 100")
-    cur.connection.commit()
-    print("Deleted rows beyond ID 100 from 'songs' table.")
-
-def reset_song_index(cur):
-    cur.execute('''
-        CREATE TABLE temp_songs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            artist TEXT,
-            popularity INTEGER
-        );
-    ''')
-    cur.connection.commit()
-
-    cur.execute('''
-        INSERT INTO temp_songs (title, artist, popularity)
-        SELECT title, artist, popularity FROM songs;
-    ''')
-    cur.connection.commit()
-
-    cur.execute('DROP TABLE IF EXISTS songs')
-    cur.connection.commit()
-
-    cur.execute('ALTER TABLE temp_songs RENAME TO songs')
-    cur.connection.commit()
-
-    print("Reset index and updated 'songs' table.")
-
 def main():
-    cur, conn = set_up_database("songs.db")
-    first_table()
+   
+    create_artists_table()
+    create_songs_table()
 
-    remove_columns_from_songs(cur)  
+    sp = spotify_authenticate()
+
+    token = "-SPqPS1Wq_0zYs_L-31AVu0N_7Bx2-UcEmFQZAYs0CQ5zEeQKq083QV-VK0zLNHt"
+    genius = lyricsgenius.Genius(token, timeout=10)
+
+    cur, conn = set_up_database("final.db")
+
+    artists, songs = combine_and_copy_data(cur, sp)
+
+    copy_columns_data(source_db, target_db, source_table, target_table, column_names)
+
+    update_songs_with_lyrics_and_word_count('final.db', genius, sp)
+
+    update_artist_ids_in_songs('final.db')
     
-    artists, songs = combine_and_order(cur)  
-    
-    if not artists:  
-        print("All 100 songs have already been added. No new songs to process.")
-        conn.close()
-        return
-
-    reset_song_index(cur)
-
-    sp = spotify_authenticate()  
-    populate_lyrics_table_with_duration(cur, conn, artists, songs, sp)  
-    
-    update_duration_and_wpm(cur, sp)  
-
     conn.close()
 
 if __name__ == "__main__":
